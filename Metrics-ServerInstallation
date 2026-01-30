@@ -1,0 +1,127 @@
+Installing Metrics Server in Kubernetes
+Step 1: Apply the Metrics Server Manifest
+
+Official YAML (for Kubernetes v1.26+):
+
+kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
+
+
+This creates:
+
+metrics-server Deployment
+
+metrics-server Service
+
+APIService v1beta1.metrics.k8s.io
+
+Step 2: Check if Metrics Server Pod is Running
+kubectl get pods -n kube-system | grep metrics-server
+
+
+Expected output:
+
+metrics-server-xxxxx   1/1   Running   0   30s
+
+Step 3: Check APIService
+kubectl get apiservice v1beta1.metrics.k8s.io
+
+
+Should show: AVAILABLE True
+
+If False (FailedDiscoveryCheck) → metrics-server pod is not reachable by kube-apiserver
+
+Step 4: Test Metrics
+kubectl top nodes
+kubectl top pods
+
+
+This shows CPU and memory metrics per node/pod.
+
+Common Errors and Fixes
+Error	Cause	Fix
+kubectl top nodes → error: Metrics API not available	APIService cannot reach metrics-server	Check kubectl get apiservice v1beta1.metrics.k8s.io and logs
+FailedDiscoveryCheck	kube-apiserver cannot connect to metrics-server Service IP	Usually network/TLS issue. Use hostNetwork: true in deployment
+Pod logs show TLS errors connecting to kubelet	Metrics-server cannot verify kubelet TLS certificates	Add --kubelet-insecure-tls to deployment args
+Pod logs show connection refused or timeout	kubelet port blocked or inaccessible	Check firewall, network policies, CNI connectivity
+Endpoints empty (kubectl get endpoints metrics-server)	Service cannot route to pod	Check Service selector and port mapping (port:443, targetPort:4443)
+wget or curl to service IP gives TLS error	Metrics-server uses self-signed cert, rejecting Service IP connections	Use hostNetwork: true to bypass Service
+Step 5: Recommended Deployment Args
+
+Make sure metrics-server Deployment has these args:
+
+args:
+  - --cert-dir=/tmp
+  - --secure-port=4443
+  - --kubelet-insecure-tls
+  - --kubelet-preferred-address-types=InternalIP,ExternalIP,Hostname
+  - --kubelet-use-node-status-port
+  - --metric-resolution=15s
+
+
+--kubelet-insecure-tls → skips TLS verification for kubelets
+
+--metric-resolution=15s → metrics collected every 15s
+
+--kubelet-preferred-address-types=InternalIP,... → ensures correct IP is used to contact kubelets
+
+Step 6: Optional (Required in Self-Hosted Clusters)
+
+Add hostNetwork to deployment spec:
+
+spec:
+  template:
+    spec:
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+
+
+Solves FailedDiscoveryCheck due to Service IP TLS mismatch
+
+Allows APIService to connect directly to pod
+
+Step 7: Verify Everything
+kubectl get pods -n kube-system | grep metrics-server
+kubectl get apiservice v1beta1.metrics.k8s.io
+kubectl top nodes
+kubectl top pods
+kubectl logs -n kube-system <metrics-server-pod>
+
+
+✅ All metrics should now be available.
+
+Step 8: Troubleshooting Commands
+
+Check pod logs:
+
+kubectl logs -n kube-system metrics-server-xxxx
+
+
+Check APIService:
+
+kubectl describe apiservice v1beta1.metrics.k8s.io
+
+
+Test connectivity from a pod:
+
+kubectl run -it --rm --restart=Never busybox --image=busybox:1.36 -- sh
+wget -qO- --no-check-certificate https://<metrics-server-service-ip>:443/metrics
+
+
+Check endpoints:
+
+kubectl get endpoints -n kube-system metrics-server
+
+
+✅ Summary
+
+Apply metrics-server YAML
+
+Add args for insecure kubelet TLS
+
+If APIService fails → check connectivity / hostNetwork
+
+Use kubectl top to verify metrics
+
+If you want, I can make a condensed “note-friendly” version with commands only and common errors, perfect for keeping as a study or reference sheet.
+
+Do you want me to do that?
