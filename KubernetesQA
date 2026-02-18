@@ -1,0 +1,7 @@
+You need to upgrade a database running as StatefulSet from version 10.0 to 1.1
+
+Requirements:
+Only one Pod should be updated at a time
+Each Pod must come back with the same Identity and storage
+The System must remain stable during the upgrade
+How will you implement this?
